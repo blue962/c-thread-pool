@@ -29,7 +29,22 @@ typedef struct jobqueue{
     
 }jobqueue;
 
-// 任务队列初始化
+// 工作线程 - 设计
+typedef struct thread{
+    int id; // 进程编号
+    pthread_t thread_id;    // 真实线程ID
+    struct thpool *thpool_p;   // 指向线程池的指针
+
+}thread;
+// 线程池 - 设计
+typedef struct thpool{
+    thread **threads;   // 指向线程的指针 管理所有线程
+    int threads_num;    // 线程个数
+    jobqueue jobqueue;  // 线程池共用的任务队列
+
+}thpool;
+
+// 任务队列 - 初始化
 int jobqueue_init(jobqueue *p){
     if(pthread_mutex_init(&(p->mutex),NULL) != 0){
         return -1;
@@ -47,10 +62,11 @@ int jobqueue_init(jobqueue *p){
 
 // 任务队列 - 放任务
 void jobqueue_push(jobqueue *queue,job *newjob){
+    // 任务的next指针置空 还没进入队列，不需要占用队列的mutex
+    newjob->next = NULL;
     // 队列加锁
     pthread_mutex_lock(&(queue->mutex));
     // 添加任务到队尾
-    newjob->next = NULL;
     if(queue->len == 0){    // 空队列
         queue->front = newjob;
         queue->rear = newjob;
