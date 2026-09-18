@@ -18,7 +18,7 @@ typedef struct jobqueue{
 
     // 互斥锁
     pthread_mutex_t mutex;
-    // 条件变量 任务队列为空时 阻塞线程池中的线程
+    // 条件变量
     pthread_cond_t has_cond;
     // 队头指针
     job *front;
@@ -35,6 +35,7 @@ int jobqueue_init(jobqueue *p){
         return -1;
     }
     if(pthread_cond_init(&(p->has_cond),NULL) != 0){
+        pthread_mutex_destroy(&(p->mutex)); // 初始化条件变量失败 需要销毁已经创建的互斥锁
         return -1;
     }
     p->front = NULL;
@@ -49,6 +50,7 @@ void jobqueue_push(jobqueue *queue,job *newjob){
     // 队列加锁
     pthread_mutex_lock(&(queue->mutex));
     // 添加任务到队尾
+    newjob->next = NULL;
     if(queue->len == 0){    // 空队列
         queue->front = newjob;
         queue->rear = newjob;
@@ -57,7 +59,6 @@ void jobqueue_push(jobqueue *queue,job *newjob){
     else{
         queue->rear->next = newjob;
         queue->rear = newjob;
-        newjob->next = NULL;
     }
     queue->len++;
     pthread_cond_signal(&(queue->has_cond));   // 唤醒一个阻塞的线程
