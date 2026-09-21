@@ -57,6 +57,24 @@ void *thread_do(void *arg){
     // 获取线程池中的公共任务队列
     jobqueue *queue = &pool->jobqueue;
 
+    while (1)
+    {
+        pthread_mutex_lock(&(queue->mutex));
+
+        while (queue->len == 0) {
+            pthread_cond_wait(&(queue->has_cond),&(queue->mutex));
+        }
+
+        pthread_mutex_unlock(&(queue->mutex));
+
+        job *job_p = jobqueue_pull(queue);
+        if(job_p != NULL){
+            job_p->func(job_p->arg);
+            free(job_p);
+        }
+    }
+    
+
     return NULL;
 }
 
