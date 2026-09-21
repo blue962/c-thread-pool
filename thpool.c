@@ -1,5 +1,6 @@
 #include "thpool.h"
 #include <pthread.h>
+#include <stdlib.h>
 
 // 任务 - 设计
 typedef struct job{
@@ -31,11 +32,12 @@ typedef struct jobqueue{
 
 // 工作线程 - 设计
 typedef struct thread{
-    int id; // 进程编号
-    pthread_t thread_id;    // 真实线程ID
-    struct thpool *thpool_p;   // 指向线程池的指针
+    int id; // 自定义的工作线程编号 方便管理调试
+    pthread_t thread_id;    // 线程标识
+    struct thpool *thpool_p;   // 指向 → 线程指针数组的指针
 
 }thread;
+
 // 线程池 - 设计
 typedef struct thpool{
     thread **threads;   // 指向线程的指针 管理所有线程
@@ -43,6 +45,27 @@ typedef struct thpool{
     jobqueue jobqueue;  // 线程池共用的任务队列
 
 }thpool;
+
+/** 初始化工作线程
+ *  malloc一个线程
+ *  设置id
+ *  设置指向线程指针数组(线程池)的指针 thpool_p
+ *  pthread_create 创建真正的工作线程
+ * 
+ *  @param thpool_p 要绑定的线程池
+ *  @param thread_p 返回创建的线程地址
+ *  @param id 线程id
+ */
+int thread_init(thpool *thpool_p,thread **thread_p,int id){
+    // malloc内存空间
+    *thread_p = malloc(sizeof(thread));
+    if(*thread_p == NULL){
+        return -1;
+    }
+
+    (*thread_p)->id = id;
+    (*thread_p)->thpool_p = thpool_p;
+}
 
 // 任务队列 - 初始化
 int jobqueue_init(jobqueue *p){
