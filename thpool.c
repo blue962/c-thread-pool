@@ -34,8 +34,7 @@ typedef struct jobqueue{
 typedef struct thread{
     int id; // 自定义的工作线程编号 方便管理调试
     pthread_t thread_id;    // 线程标识
-    struct thpool *thpool_p;   // 指向 → 线程指针数组的指针
-
+    struct thpool *thpool_p;   // 指向所属的线程池
 }thread;
 
 // 线程池 - 设计
@@ -46,10 +45,21 @@ typedef struct thpool{
 
 }thpool;
 
+// 工作线程入口
+void *thread_do(void *arg){
+    thread *thread_p = (thread *)arg;
+
+    thpool *pool = thread_p ->thpool_p;
+
+    jobqueue *queue = &pool->jobqueue;
+
+    return NULL;
+}
+
 /** 初始化工作线程
  *  malloc一个线程
  *  设置id
- *  设置指向线程指针数组(线程池)的指针 thpool_p
+ *  设置所属线程池指针 thpool_p
  *  pthread_create 创建真正的工作线程
  * 
  *  @param thpool_p 要绑定的线程池
@@ -65,6 +75,21 @@ int thread_init(thpool *thpool_p,thread **thread_p,int id){
 
     (*thread_p)->id = id;
     (*thread_p)->thpool_p = thpool_p;
+
+    int ret = pthread_create(
+        &(*thread_p)->thread_id,
+        NULL,
+        thread_do,
+        *thread_p
+    );
+
+    if(ret != 0){
+        free(*thread_p);
+        *thread_p = NULL;
+        return -1;
+    }
+
+    return 0;
 }
 
 // 任务队列 - 初始化
