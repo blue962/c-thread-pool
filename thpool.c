@@ -47,10 +47,14 @@ typedef struct thpool{
 
 // 工作线程入口
 void *thread_do(void *arg){
-    thread *thread_p = (thread *)arg;
+    // pthread_create 传入的是 thread *，
+    // 这里将通用指针 void * 转回 thread *
+    thread *thread_p = (thread *)arg;   // 新定义一个指针变量，让它指向 当前这个工作线程对应的 thread 结构体
 
+    // 通过当前工作线程找到所属线程池
     thpool *pool = thread_p ->thpool_p;
 
+    // 获取线程池中的公共任务队列
     jobqueue *queue = &pool->jobqueue;
 
     return NULL;
@@ -66,25 +70,35 @@ void *thread_do(void *arg){
  *  @param thread_p 返回创建的线程地址
  *  @param id 线程id
  */
-int thread_init(thpool *thpool_p,thread **thread_p,int id){
-    // malloc内存空间
+int thread_init(thpool *pool,thread **thread_p,int id){
+
+    // 为工作线程的“线程信息结构体”申请内存
     *thread_p = malloc(sizeof(thread));
+    // malloc 失败则无法创建工作线程
     if(*thread_p == NULL){
         return -1;
     }
 
+    // 保存自定义线程编号，方便后续管理和调试
     (*thread_p)->id = id;
-    (*thread_p)->thpool_p = thpool_p;
 
+    // 保存所属线程池地址
+    // 工作线程以后可以通过它找到公共任务队列等资源
+    (*thread_p)->thpool_p = pool;
+
+    // 创建真正的 POSIX 工作线程
     int ret = pthread_create(
-        &(*thread_p)->thread_id,
-        NULL,
-        thread_do,
-        *thread_p
+        &(*thread_p)->thread_id,    // 保存新线程的 pthread 标识
+        NULL,   // 使用默认线程属性
+        thread_do,  // 新线程启动后执行的入口函数
+        *thread_p   // 传给 thread_do() 的参数
     );
 
+    // pthread_create 创建失败
     if(ret != 0){
+        // 释放前面 malloc 的 thread 结构体，避免内存泄漏
         free(*thread_p);
+        // 防止外部留下悬空指针
         *thread_p = NULL;
         return -1;
     }
