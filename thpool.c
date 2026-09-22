@@ -117,7 +117,7 @@ typedef struct thpool{
 }thpool;
 
 // 工作线程入口
-void *thread_do(void *arg){
+void *thread_do(void *arg){ // pthread_create()规定的函数返回类型与参数类型 → void *xxx(void *)
     // pthread_create 传入的是 thread *，
     // 这里将通用指针 void * 转回 thread *
     thread *thread_p = (thread *)arg;   // 新定义一个指针变量，让它指向 当前这个工作线程对应的 thread 结构体
@@ -177,7 +177,7 @@ int thread_init(thpool *pool,thread **thread_p,int id){
 
     // 创建真正的 POSIX 工作线程
     int ret = pthread_create(
-        &(*thread_p)->thread_id,    // 保存新线程的 pthread 标识
+        &(*thread_p)->thread_id,    // 保存新线程的 pthread 标识    ->的优先级最高
         NULL,   // 使用默认线程属性
         thread_do,  // 新线程启动后执行的入口函数
         *thread_p   // 传给 thread_do() 的参数
@@ -191,7 +191,6 @@ int thread_init(thpool *pool,thread **thread_p,int id){
         *thread_p = NULL;
         return -1;
     }
-
     return 0;
 }
 
@@ -201,40 +200,52 @@ thpool *thpool_init(int threads_num){
     if(pool == NULL){   // 检查malloc是否成功
         return NULL;
     }
-    pool->threads_num = threads_num;    // 将线程池的线程个数赋值
+    pool->threads_num = threads_num;    // 记录线程池规模
 
     if (jobqueue_init(&(pool->jobqueue)) != 0) {    // 初始化线程池的共享队列
         free(pool); // 队列初始化失败要释放线程池
         return NULL;
     }
-
-    pool->threads = malloc(sizeof(thread *) * threads_num); // 申请线程池的线程空间
+    // 为工作线程指针数组分配空间
+    pool->threads = malloc(sizeof(thread *) * threads_num); // 申请一块连续的内存空间 当作动态数组来使用 可以使用[]来访问
     if(pool->threads == NULL){  // 申请失败要释放线程池空间
         free(pool);
         return NULL;
     }
-    // 初始化每个工作线程
+    // 逐个创建工作线程，并绑定到当前线程池
     for (int i = 0; i < threads_num; i++){
         if(thread_init(pool,&(pool->threads[i]),i) != 0){
             // 线程初始化失败
-
+            /* TODO: 清理已经创建成功的线程 */
             return NULL;
         }
     }
-
     return pool;
 }
 
-// 创建并提交任务    → 生成job 传入函数+参数 → 放到线程池里
-int thpool_add_job(thpool *pool,void (*func)(void *),void *arg){
-    // 申请job内存空间
+/**
+ * @brief 向线程池提交一个任务
+ *
+ * 将任务函数和参数封装成 job，并加入线程池的共享任务队列。
+ * 任务入队后，jobqueue_push() 会唤醒一个等待中的工作线程执行任务。
+ *
+ * @param pool 目标线程池
+ * @param func 要执行的任务函数
+ * @param arg  传递给任务函数的参数
+ *
+ * @return 0 提交成功
+ * @return -1 创建任务失败
+ */
+int thpool_add_work(thpool *pool,void (*func)(void *),void *arg){
+    // 创建任务节点
     job *newjob = malloc(sizeof(job));
     if(newjob == NULL){
         return -1;
     }
+    // 保存任务的执行函数及参数
     newjob->func = func;
     newjob->arg = arg;
-
+    // 将任务加入线程池的共享任务队列
     jobqueue_push(&(pool->jobqueue),newjob);
 
     return 0;
