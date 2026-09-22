@@ -197,19 +197,45 @@ int thread_init(thpool *pool,thread **thread_p,int id){
 
 // 初始化线程池
 thpool *thpool_init(int threads_num){
-    thpool *pool = malloc(sizeof(thpool));
-    if(pool == NULL){
+    thpool *pool = malloc(sizeof(thpool));  // 申请线程池内存空间
+    if(pool == NULL){   // 检查malloc是否成功
         return NULL;
     }
-    pool->threads_num = threads_num;
+    pool->threads_num = threads_num;    // 将线程池的线程个数赋值
 
-    if (jobqueue_init(&(pool->jobqueue)) != 0) {
+    if (jobqueue_init(&(pool->jobqueue)) != 0) {    // 初始化线程池的共享队列
+        free(pool); // 队列初始化失败要释放线程池
+        return NULL;
+    }
+
+    pool->threads = malloc(sizeof(thread *) * threads_num); // 申请线程池的线程空间
+    if(pool->threads == NULL){  // 申请失败要释放线程池空间
         free(pool);
         return NULL;
     }
-    pool->threads = malloc(sizeof(thread *) * threads_num);
-    
+    // 初始化每个工作线程
     for (int i = 0; i < threads_num; i++){
-        thread_init(pool,&(pool->threads[i]),i);
+        if(thread_init(pool,&(pool->threads[i]),i) != 0){
+            // 线程初始化失败
+
+            return NULL;
+        }
     }
+
+    return pool;
+}
+
+// 创建并提交任务    → 生成job 传入函数+参数 → 放到线程池里
+int thpool_add_job(thpool *pool,void (*func)(void *),void *arg){
+    // 申请job内存空间
+    job *newjob = malloc(sizeof(job));
+    if(newjob == NULL){
+        return -1;
+    }
+    newjob->func = func;
+    newjob->arg = arg;
+
+    jobqueue_push(&(pool->jobqueue),newjob);
+
+    return 0;
 }
