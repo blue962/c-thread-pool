@@ -9,5 +9,6 @@ thpool *thpool_init(int threads_num);
 
 // 向线程池提交任务
 int thpool_add_work(thpool *pool,void (*func)(void *),void *arg);
-
+// 等待线程池工作完
+void thpool_wait(thpool *pool);
 #endif

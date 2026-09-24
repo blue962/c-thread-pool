@@ -30,8 +30,7 @@ int main(void){
     }
 
     // 临时等待工作线程执行任务
-    // 后续会用 thpool_wait() 替代
-    sleep(5);
+    thpool_wait(pool);
 
     return 0;
 }

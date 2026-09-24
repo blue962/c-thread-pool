@@ -114,6 +114,10 @@ typedef struct thpool{
     int threads_num;    // 线程个数
     jobqueue jobqueue;  // 线程池共用的任务队列
 
+    int pending_tasks;          // 尚未完成的任务数量
+    pthread_mutex_t wait_mutex; // 保护 pending_tasks
+    pthread_cond_t all_done;    // 所有任务完成时通知等待线程
+
 }thpool;
 
 // 工作线程入口
@@ -141,6 +145,14 @@ void *thread_do(void *arg){ // pthread_create()规定的函数返回类型与参
         job *job_p = jobqueue_pull(queue);
         if(job_p != NULL){
             job_p->func(job_p->arg);
+
+            pthread_mutex_lock(&(pool->wait_mutex));
+            pool->pending_tasks--;
+            if(pool->pending_tasks == 0){
+                pthread_cond_signal(&(pool->all_done));
+            }
+            pthread_mutex_unlock(&(pool->wait_mutex));
+
             free(job_p);    // 任务完成要进行释放 生命周期结束
         }
     }
@@ -201,6 +213,12 @@ thpool *thpool_init(int threads_num){
         return NULL;
     }
     pool->threads_num = threads_num;    // 记录线程池规模
+    pool->pending_tasks = 0;
+
+    if(pthread_mutex_init(&(pool->wait_mutex), NULL) != 0 || pthread_cond_init(&(pool->all_done), NULL) != 0){
+        free(pool);
+        return NULL;
+    }
 
     if (jobqueue_init(&(pool->jobqueue)) != 0) {    // 初始化线程池的共享队列
         free(pool); // 队列初始化失败要释放线程池
@@ -245,8 +263,29 @@ int thpool_add_work(thpool *pool,void (*func)(void *),void *arg){
     // 保存任务的执行函数及参数
     newjob->func = func;
     newjob->arg = arg;
+
+    pthread_mutex_lock(&(pool->wait_mutex));
+    pool->pending_tasks++;
+    pthread_mutex_unlock(&(pool->wait_mutex));
+    
     // 将任务加入线程池的共享任务队列
     jobqueue_push(&(pool->jobqueue),newjob);
 
     return 0;
+}
+
+// 等待线程池工作
+void thpool_wait(thpool *pool)
+{
+    pthread_mutex_lock(&(pool->wait_mutex));
+
+    while(pool->pending_tasks > 0){
+
+        pthread_cond_wait(
+            &(pool->all_done),
+            &(pool->wait_mutex)
+        );
+    }
+
+    pthread_mutex_unlock(&(pool->wait_mutex));
 }
