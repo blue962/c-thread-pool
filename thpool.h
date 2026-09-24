@@ -12,5 +12,5 @@ int thpool_add_work(thpool *pool,void (*func)(void *),void *arg);
 // 等待线程池工作完
 void thpool_wait(thpool *pool);
 // 销毁线程池
-void thpool_destory(thpool *pool)
+void thpool_destroy(thpool *pool);
 #endif

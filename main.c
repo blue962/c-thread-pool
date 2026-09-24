@@ -31,6 +31,7 @@ int main(void){
 
     // 等待所有已提交任务执行完成
     thpool_wait(pool);
+    thpool_destroy(pool);
 
     return 0;
 }

@@ -194,8 +194,7 @@ int thread_init(thpool *pool,thread **thread_p,int id){
     // 工作线程以后可以通过它找到公共任务队列等资源
     (*thread_p)->thpool_p = pool;
 
-    // 初始化
-    pool->stop = 0; // 准备运行
+
 
     // 创建真正的 POSIX 工作线程
     int ret = pthread_create(
@@ -219,6 +218,8 @@ int thread_init(thpool *pool,thread **thread_p,int id){
 // 初始化线程池
 thpool *thpool_init(int threads_num){
     thpool *pool = malloc(sizeof(thpool));  // 申请线程池内存空间
+
+    pool->stop = 0; // 准备运行
     if(pool == NULL){   // 检查malloc是否成功
         return NULL;
     }
@@ -307,7 +308,7 @@ void thpool_wait(thpool *pool)
 }
 
 // 销毁
-void thpool_destory(thpool *pool){
+void thpool_destroy(thpool *pool){
 
     if(pool == NULL){
         return;
