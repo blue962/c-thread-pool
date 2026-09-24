@@ -118,6 +118,7 @@ typedef struct thpool{
     pthread_mutex_t wait_mutex; // 保护 pending_tasks
     pthread_cond_t all_done;    // 所有任务完成时通知等待线程
 
+    int stop;   // 是否停止线程 0 → 正常运行 / 1 → 准备关闭
 }thpool;
 
 // 工作线程入口
@@ -136,10 +137,17 @@ void *thread_do(void *arg){ // pthread_create()规定的函数返回类型与参
     {
         pthread_mutex_lock(&(queue->mutex));
         // while循环判断 因为醒来还要进行判断是否有任务
-        while (queue->len == 0) {
+        while (queue->len == 0 && !pool->stop) {    // 队列没有任务，并且线程池也在正常运行
             pthread_cond_wait(&(queue->has_cond),&(queue->mutex));  // 会进行睡眠 等待信号唤醒  睡之前要释放锁 睡醒会重新拿锁
         }
+        if(queue->len == 0 && pool->stop){  // 队列没有任务，并且线程池准备关闭
+            // 退出前要解锁，因为现在锁还没释放
+            pthread_mutex_unlock(&(queue->mutex));
+            break;  // 退出死循环
+        }
+        // 不进入循环 → 任务队列不为空 拿到任务
 
+        // 解锁
         pthread_mutex_unlock(&(queue->mutex));
 
         job *job_p = jobqueue_pull(queue);
@@ -157,7 +165,6 @@ void *thread_do(void *arg){ // pthread_create()规定的函数返回类型与参
         }
     }
     
-
     return NULL;
 }
 
@@ -187,6 +194,9 @@ int thread_init(thpool *pool,thread **thread_p,int id){
     // 工作线程以后可以通过它找到公共任务队列等资源
     (*thread_p)->thpool_p = pool;
 
+    // 初始化
+    pool->stop = 0; // 准备运行
+
     // 创建真正的 POSIX 工作线程
     int ret = pthread_create(
         &(*thread_p)->thread_id,    // 保存新线程的 pthread 标识    ->的优先级最高
@@ -215,7 +225,13 @@ thpool *thpool_init(int threads_num){
     pool->threads_num = threads_num;    // 记录线程池规模
     pool->pending_tasks = 0;
 
-    if(pthread_mutex_init(&(pool->wait_mutex), NULL) != 0 || pthread_cond_init(&(pool->all_done), NULL) != 0){
+    if(pthread_mutex_init(&(pool->wait_mutex), NULL) != 0){
+        free(pool);
+        return NULL;
+    }
+
+    if(pthread_cond_init(&(pool->all_done), NULL) != 0){
+        pthread_mutex_destroy(&(pool->wait_mutex)); // 资源按顺序创建，失败时反方向清理
         free(pool);
         return NULL;
     }
@@ -288,4 +304,38 @@ void thpool_wait(thpool *pool)
     }
 
     pthread_mutex_unlock(&(pool->wait_mutex));
+}
+
+// 销毁
+void thpool_destory(thpool *pool){
+
+    if(pool == NULL){
+        return;
+    }
+
+    thpool_wait(pool);
+    /*  destroy线程：写 stop
+        工作线程：   读 stop
+        所以修改stop要拿同一把锁
+    */
+    pthread_mutex_lock(&pool->jobqueue.mutex);
+    pool->stop = 1;
+
+    pthread_cond_broadcast(&pool->jobqueue.has_cond);   // 唤醒在 has_cond 条件变量上等待的线程
+    pthread_mutex_unlock(&pool->jobqueue.mutex);
+
+    for(int i = 0; i < pool->threads_num; i++){
+        pthread_join(pool->threads[i]->thread_id,NULL); // 等待线程 thread_id 结束，不需要返回值
+        free(pool->threads[i]);
+    }
+
+    free(pool->threads);
+
+    pthread_cond_destroy(&(pool->jobqueue.has_cond));
+    pthread_mutex_destroy(&(pool->jobqueue.mutex));
+
+    pthread_cond_destroy(&(pool->all_done));
+    pthread_mutex_destroy(&(pool->wait_mutex));
+
+    free(pool);
 }
