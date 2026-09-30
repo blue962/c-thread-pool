@@ -219,12 +219,13 @@ int thread_init(thpool *pool,thread **thread_p,int id){
 thpool *thpool_init(int threads_num){
     thpool *pool = malloc(sizeof(thpool));  // 申请线程池内存空间
 
-    pool->stop = 0; // 准备运行
+
     if(pool == NULL){   // 检查malloc是否成功
         return NULL;
     }
     pool->threads_num = threads_num;    // 记录线程池规模
     pool->pending_tasks = 0;
+        pool->stop = 0; // 准备运行
 
     if(pthread_mutex_init(&(pool->wait_mutex), NULL) != 0){
         free(pool);
